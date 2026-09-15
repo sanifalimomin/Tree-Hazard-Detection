@@ -256,9 +256,12 @@ All seeded emails are `@example.com`.
 
 ## Known gaps
 
-- **Row Level Security is not configured.** The Supabase publishable key
-  currently allows anonymous read and write of every table. Enable RLS before
-  any real resident data goes in.
+- **Row Level Security is staged but not yet enabled.** The migration is written
+  (`supabase/enable-rls.sql`, applied and verified by `npm run db:secure`). It
+  requires `SUPABASE_SERVICE_ROLE_KEY` to be set first — once RLS is on, the
+  publishable key is denied everything, and the server authenticates with the
+  service role instead. Until then the publishable key can read and write every
+  table, including resident names and email addresses.
 - Completion does not yet email the resident, and there is no feedback capture
   page — the table and the hook point exist.
 - Suggested duplicates are computed at intake but there is no admin UI to

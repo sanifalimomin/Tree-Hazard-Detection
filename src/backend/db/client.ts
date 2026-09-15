@@ -22,21 +22,69 @@
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** Base URL for the Supabase project (no trailing slash). */
+/**
+ * Base URL for the Supabase project (no trailing slash).
+ *
+ * Read from the environment only. Project identifiers used to be hardcoded as
+ * a fallback here, which put a live endpoint and key into the repository and
+ * made a misconfigured deployment silently talk to the wrong project instead
+ * of failing.
+ */
 export function supabaseUrl(): string {
-  return (
+  const url =
     process.env.SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL ||
-    "https://xwmraxdxmqxtedvzhpgx.supabase.co"
-  );
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL;
+
+  if (!url) {
+    throw new Error(
+      "SUPABASE_URL is not set. Copy .env.example to .env.local and fill it in."
+    );
+  }
+  return url.replace(/\/+$/, "");
 }
 
-/** API key for PostgREST (publishable key works for reads + writes if RLS allows). */
+/**
+ * API key for PostgREST.
+ *
+ * Prefers the SERVICE ROLE key. This module only ever runs server-side, and the
+ * service role bypasses Row Level Security - which is what lets RLS deny the
+ * anonymous/publishable key outright while the application keeps working.
+ *
+ * The publishable key is accepted as a fallback so the app still starts, but it
+ * is only safe once RLS policies exist: on a table without RLS it grants any
+ * anonymous caller full read and write access, including resident names and
+ * email addresses.
+ */
 export function supabaseKey(): string {
-  return (
+  const serviceRole =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+  if (serviceRole) return serviceRole;
+
+  const publishable =
     process.env.SUPABASE_KEY ||
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    "sb_publishable_xC7qMbW3JhgQRZfsSIucoA_rDCt20eb"
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!publishable) {
+    throw new Error(
+      "No Supabase key set. Provide SUPABASE_SERVICE_ROLE_KEY (preferred) " +
+        "or SUPABASE_KEY in .env.local."
+    );
+  }
+
+  warnOnceAboutPublishableKey();
+  return publishable;
+}
+
+let publishableWarningShown = false;
+function warnOnceAboutPublishableKey(): void {
+  if (publishableWarningShown) return;
+  publishableWarningShown = true;
+  console.warn(
+    "[supabase] Using the publishable (anon) key for server-side access. " +
+      "Set SUPABASE_SERVICE_ROLE_KEY and enable RLS - otherwise every table " +
+      "is readable and writable by anyone holding this key."
   );
 }
 

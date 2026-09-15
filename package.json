@@ -10,7 +10,8 @@
     "db:reset": "tsx --env-file=.env.local src/backend/seed/run.ts --reset",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "db:check": "tsx --env-file=.env.local src/backend/db/check.ts"
+    "db:check": "tsx --env-file=.env.local src/backend/db/check.ts",
+    "db:secure": "tsx --env-file=.env.local src/backend/db/secure.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
