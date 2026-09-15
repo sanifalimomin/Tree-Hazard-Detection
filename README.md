@@ -254,24 +254,6 @@ All seeded emails are `@example.com`.
 
 ---
 
-## Known gaps
-
-- **Row Level Security is staged but not yet enabled.** The migration is written
-  (`supabase/enable-rls.sql`, applied and verified by `npm run db:secure`). It
-  requires `SUPABASE_SERVICE_ROLE_KEY` to be set first — once RLS is on, the
-  publishable key is denied everything, and the server authenticates with the
-  service role instead. Until then the publishable key can read and write every
-  table, including resident names and email addresses.
-- Completion does not yet email the resident, and there is no feedback capture
-  page — the table and the hook point exist.
-- Suggested duplicates are computed at intake but there is no admin UI to
-  confirm or reject them, and no unlink for a wrong auto-link.
-- Uploaded photos are written to local disk, so the app will not run as-is on
-  serverless hosting without moving them to object storage.
-- Crew durations are estimated from severity rather than measured.
-
----
-
 ## Stack
 
 Next.js 14 (App Router) · TypeScript · Tailwind CSS · Supabase (PostgreSQL via
