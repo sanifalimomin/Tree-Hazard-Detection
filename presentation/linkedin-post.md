@@ -11,16 +11,25 @@ sitting open, one crew, a handful of site visits a week — worked roughly in th
 order they arrive. So a tree that fell on a house last night queues behind a
 nine-month-old request to trim a hedge.
 
-We built a triage tool that reads the description *and* the photo, scores the
-hazard, and ranks the backlog by what should actually be inspected first.
+We didn't stop at a prototype. What we walked out with is an app they could put
+in front of a crew the next morning.
 
-Honestly though, the event was the best part. Volta is a genuinely good room to
-build in. The problems came from real organisations rather than being invented
-for a demo, which changes how you think about every decision. And there is
-nothing like a deadline and a table of people shipping to sharpen an idea — we
-threw away more in 48 hours than I normally would in a month.
+Two things it does:
 
-Built with [@teammate] [@teammate] [@teammate] — who were excellent.
+→ **Ranking.** It reads the description and the photo together, scores the
+hazard, and orders the backlog by what actually needs inspecting first — not by
+when it arrived.
+
+→ **Clustering.** Once a crew is on a street, it works out which other open
+requests are close enough to clear on the same trip. That's how you burn down a
+290-request backlog with one crew: not by working faster, but by making every
+trip count for more.
+
+Huge thanks to **Volta** and the **Claude team** for the experience — a great
+room, real problems from real organisations, and the kind of weekend that
+sharpens how you think about a product.
+
+Built with [@teammate] [@teammate] [@teammate].
 
 Next.js · Supabase · Claude
 
@@ -30,9 +39,9 @@ Next.js · Supabase · Claude
 
 - Lead with the GIF; LinkedIn autoplays it in-feed and it carries the story
   without anyone needing to click through.
-- I kept the event praise non-specific on purpose — I do not know the organisers,
-  sponsors, mentor names or attendee count. Swap in the real details and tag
-  them; specifics are what make this kind of post land.
-- "48 hours" is a guess. Fix it if the format was different.
-- Tag Volta and Anthropic. Put the repo link in the FIRST COMMENT rather than the
-  post body — LinkedIn suppresses reach on posts with outbound links.
+- Tag Volta and Anthropic properly so the thanks actually reaches them.
+- Put the repo link in the FIRST COMMENT, not the post body — LinkedIn suppresses
+  reach on posts carrying outbound links.
+- "Ready the next morning" is a real claim, so be ready to back it: the app runs
+  on Supabase with auth, intake, scoring, clustering and the printable field
+  sheet all working. Enable RLS before anyone outside the team touches it.
