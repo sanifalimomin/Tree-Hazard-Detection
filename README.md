@@ -2,171 +2,118 @@
 
 Inspection triage for Halifax Regional Municipality Urban Forestry.
 
-290 tree requests are open. Every one needs a site visit, and crews reach only a
-handful a week. Residents report trees through a public form; the system reads
-the description and the photo, scores the hazard, and ranks the backlog so the
-most dangerous trees are inspected first.
+Around 290 tree reports are open. Every one needs a site visit, and one crew
+reaches a handful a week, so requests get worked roughly in the order they
+arrive — which means a tree that fell on a house last night queues behind a
+nine-month-old request to prune a hedge.
 
-It does **not** decide whether a tree is dangerous. It decides what order a
-qualified arborist should look at them in.
+This reads each report, scores the hazard from the description **and the
+photograph**, ranks the backlog, and then answers the follow-up question:
+*given the crew is already on that street, what else should they clear today?*
 
-## Run it
+> It decides **inspection order**. It never decides whether a tree is dangerous.
+> Only a qualified arborist on site can make that call, and every screen and the
+> printed sheet say so.
+
+---
+
+## Quick start
 
 ```bash
 npm install
-cp .env.example .env.local   # add your Supabase DATABASE_URL
-npm run db:check             # verify the connection (diagnoses Supabase gotchas)
-npm run db:reset             # create the schema and seed it
-npm run dev                  # http://localhost:5177
+cp .env.example .env.local     # fill in the values below
+npm run db:check               # verify the Supabase connection
+npm run db:seed                # load the demo dataset
+npm run dev                    # http://localhost:5177
 ```
 
-The database is **Supabase (PostgreSQL)**. `DATABASE_URL` is the only required
-variable. Two things will bite you, so `npm run db:check` tests for both:
+| Route | Who | What |
+|---|---|---|
+| `/report` | public | Submit a tree report with a photo |
+| `/report/[reference]` | public | Confirmation + reference number |
+| `/admin/login` | staff | Sign in |
+| `/admin` | staff | Ranked inspection queue |
+| `/admin/requests/[id]` | staff | Assessment, work plan, printable sheet |
 
-- Use the **Session pooler** string (`aws-0-<region>.pooler.supabase.com:5432`,
-  user `postgres.<ref>`). The direct host `db.<ref>.supabase.co` is **IPv6-only**
-  and fails with `ENOTFOUND` on an IPv4 network — which looks like a bad project
-  ref but isn't.
-- **Do not append `?sslmode=require`.** pg >= 8.23 treats it as `verify-full`,
-  which rejects Supabase's certificate chain. TLS is enabled by the app itself.
+---
 
-- `/` — public submission form (no login)
-- `/admin` — inspection queue, **behind a staff sign-in** (`admin` / `admin` by
-  default; see `ADMIN_USERNAME` / `ADMIN_PASSWORD`)
-- `/admin/requests/[id]` — full assessment and printable poster
+## Environment
 
-No API key is required. Photo analysis is skipped when one is absent and the
-app falls back to text-only triage; maps fall back to a coordinate plot.
+Only the Supabase values are required. Everything else degrades to a local
+fallback, so the app still runs — and says what it lost — with nothing else set.
 
 ```bash
-npm run build      # production build
-npm run db:seed    # seed without wiping (no-op if already seeded)
-npm test           # scoring-engine tests
+# Database (required) — Supabase project, accessed over the REST API
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_KEY=<publishable or service-role key>
+
+# Admin console (required to reach /admin)
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+ADMIN_SESSION_SECRET=          # any long random string
+ADMIN_SESSION_HOURS=12
+
+# Photo analysis (optional) — without it, text-only triage
+ANTHROPIC_API_KEY=
+VISION_MODEL=claude-opus-5
+
+# Alternative OpenAI-compatible LLM (optional)
+LLM_BASE_URL=
+LLM_API_KEY=
+LLM_MODEL=
+
+# Geocoding (optional) — falls back to a built-in Halifax street gazetteer
+GOOGLE_MAPS_API_KEY=           # server-side only; never prefix NEXT_PUBLIC_
+GEOCODER_URL=                  # Nominatim-compatible alternative
+
+# Static map tiles (optional)
+MAP_PROXY_SECRET=
+
+# Uploaded photos
+UPLOAD_DIR=var/uploads
 ```
 
-## Configuration
+---
 
-Everything is optional — copy `.env.example` to `.env.local` to change any of it.
-
-| Variable | Default | Effect |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | unset | Enables photo analysis. Without it, text-only. |
-| `VISION_MODEL` | `claude-opus-5` | Model used to assess photos. |
-| `GOOGLE_MAPS_API_KEY` | unset | Geocoding API + Maps Static API. Without it: local gazetteer and a coordinate plot instead of street maps. Server-side only. |
-| `MAP_PROXY_SECRET` | the API key | Signs `/api/map` URLs so the basemap proxy is not free image hosting. |
-| `GEOCODER_URL` | unset | Legacy Nominatim fallback, used only when no Google key is set. |
-| `ADMIN_USERNAME` | `admin` | Staff sign-in for `/admin`. |
-| `ADMIN_PASSWORD` | `admin` | Change this for anything reachable from a network. |
-| `ADMIN_SESSION_SECRET` | `DATABASE_URL` | Signs the session cookie; setting it invalidates every session. |
-| `ADMIN_SESSION_HOURS` | `12` | Session lifetime — one shift. |
-| `DATABASE_URL` | — | **Required.** Supabase Postgres connection string. |
-| `DATABASE_SSL_STRICT` | `false` | Verify Supabase's TLS certificate chain. |
-| `DATABASE_POOL_MAX` | `10` | Pooled connections held by this process. |
-| `UPLOAD_DIR` | `var/uploads` | Photo storage, outside the web root. |
-
-## Architecture
-
-Three layers, enforced by one rule: **`frontend/` never imports from
-`backend/`.** Anything both sides need lives in `shared/`.
+## How the ranking works
 
 ```
-src/
-  backend/                  server-only
-    config.ts               env reading; every value optional
-    db/client.ts            Postgres pool, schema, additive migrations
-    db/repository.ts        every query; snake_case in, camelCase out
-    domain/scoring.ts       hazard rules, classification, fusion, escalation
-    domain/bundling.ts      same-day work planner
-    domain/duplicates.ts    same-tree detection
-    services/               intake, vision, geocode, staticmap, auth, exif, storage
-    seed/                   engineered demo dataset + seeder
-  shared/                   pure data and helpers, safe in both bundles
-    types.ts                domain types, incl. server -> client prop shapes
-    scoring-config.ts       WEIGHTS and priority bands - the displayed contract
-    geo.ts                  distance maths
-    map.ts                  Web Mercator projection for the basemap overlay
-  frontend/
-    components/
-    styles/globals.css
-  app/                      Next.js routing only; pages compose, not compute
-  middleware.ts             the /admin gate (covers pages and server actions)
-```
-
-`WEIGHTS` and the plan types sit in `shared` because the UI prints them — one
-definition means the number the engine multiplies by is provably the number the
-arborist reads on the sheet.
-
-### Database
-
-Supabase-hosted PostgreSQL, accessed with `pg` (node-postgres) — no ORM, raw SQL
-in `backend/db/repository.ts`. Five tables: `requests`, `assessments`, `images`,
-`status_history`, `feedback`.
-
-Two driver behaviours the repository mappers absorb so callers never see them:
-
-- **`TIMESTAMPTZ` returns a JS `Date`.** The domain speaks ISO strings, so
-  `toIso()` normalises on the way out.
-- **`JSONB` returns already-parsed values** — never `JSON.parse` a jsonb column.
-  On the way *in* it must be `JSON.stringify`'d: node-postgres turns a JS array
-  into a Postgres *array literal*, which a jsonb column rejects, and `hazards`
-  is an array.
-
-`COUNT(*)` comes back as a string (bigint), hence `toCount()`.
-
-Status changes and classification writes run in explicit transactions;
-`setStatus` takes `SELECT ... FOR UPDATE` on the row so two dispatchers closing
-the same job serialise rather than recording a transition that never happened.
-
-### Classification is stored; scoring is not
-
-```
-classifyComplaint(text) -> Classification   expensive, runs once, PERSISTED
-scoreRequest(cls, ctx)  -> Assessment       cheap, recomputed EVERY READ
-```
-
-Wait time changes daily, so a final score written to the database would be wrong
-by the next morning. Only findings derived from the complaint and the photo are
-stored; the weighting, escalation and priority are always live.
-
-### How the score works
-
-```
-finalScore = danger * 0.50 + wait * 0.25 + location * 0.15 + review * 0.10
+finalScore = danger x 0.50  +  wait x 0.25  +  location x 0.15  +  review x 0.10
 ```
 
 | Component | Weight | Source |
 |---|---|---|
-| Danger | 50% | Text rules fused with photo analysis, capped at 100 |
-| Wait time | 25% | `min(daysWaiting / 180 * 100, 100)` |
-| Location impact | 15% | Per-street table; major arterials score highest |
-| Human review | 10% | 100 when the report is too vague or ambiguous to triage |
+| Danger | 50% | Phrase rules over the description, fused with the photo analysis |
+| Wait time | 25% | `min(daysWaiting / 180 x 100, 100)` |
+| Location impact | 15% | Per-street table — an arterial exposes more people than a cul-de-sac |
+| Human review | 10% | 100 when the report is too vague to score at all |
 
-Priority bands: **Critical** 80-100, **High** 60-79, **Medium** 35-59, **Low** 0-34.
+Bands: **Critical** 80–100 · **High** 60–79 · **Medium** 35–59 · **Low** 0–34.
 
 ### The imminent-hazard escalation floor
 
-The weighted formula alone cannot express urgency for a brand-new report. A tree
-actively falling onto a house, reported today on a residential street, tops out at:
+A weighted average buries emergencies. A tree actively falling onto a house,
+reported *today* on a residential street, tops out at:
 
 ```
-danger 100*0.50 + wait 0*0.25 + location 40*0.15 + review 0*0.10 = 56  ->  "Medium"
+danger 100 x 0.50  +  wait 0 x 0.25  +  location 40 x 0.15  =  56  ->  "Medium"
 ```
 
 Backlog age would outrank an active hazard, which is the wrong answer to the
-question this tool exists to answer. So danger sets a **floor** on the final
-score, the way severity rows work in a municipal risk matrix:
+only question this tool exists to answer. So severity sets a **floor**, the way
+severity rows work in a municipal risk matrix:
 
-- danger >= 70 -> floor of 80 (Critical)
-- danger >= 50 -> floor of 60 (High)
+- danger ≥ 70 → floored at 80 (Critical)
+- danger ≥ 50 → floored at 60 (High)
 
 The floor never lowers a score and never alters the four component scores. When
-it binds, the UI and the printed poster both say so and show the pre-escalation
+it binds, the UI and the printed sheet both say so and show the pre-escalation
 weighted score.
 
-### Fusing photo and description
+### Fusing the photo with the description
 
-The photo is analyzed on the same 0-100 scale and the same hazard vocabulary the
-text rules use, so fusion is arithmetic rather than translation. The policy:
+Both produce a 0–100 severity on the same hazard vocabulary, so combining them
+is arithmetic rather than translation.
 
 | Situation | Score used | Review flag |
 |---|---|---|
@@ -177,65 +124,152 @@ text rules use, so fusion is arithmetic rather than translation. The policy:
 | Photo resolves a vague description | photo | **cleared** |
 | Photo unusable (not a tree, too dark) | text | **flagged** |
 
-The fused score is never lower than the text score: under-ranking a hazard
-someone described is the expensive mistake. Both source scores are always shown
-side by side in the admin UI, so a disagreement is visible rather than averaged
-away.
+The fused score is never *lower* than the text score — under-ranking a hazard
+someone described is the expensive mistake. Both source scores are shown side by
+side so a disagreement is visible rather than averaged away.
 
 ### "Unsure" is not "dangerous"
 
-A report is flagged for human review when nothing observable can be scored. That
-raises the review component and shows a purple badge, but priority is computed
-independently — a vague report stays Low if nothing else is elevated. The two are
-displayed side by side, never substituted for one another.
+The review flag means the system lacks information, not that the tree is safe or
+hazardous. Priority is computed independently, and the two are displayed side by
+side — never substituted for one another.
 
-### Same-tree detection
+---
 
-When a large tree comes down, a dozen neighbours report it. Left alone that fills
-the top of the queue with one tree. Three signals gate a merge — proximity,
-recency, and description overlap — because no single one is sufficient: a
-street-centroid geocode puts every address on a street at the same point, so
-proximity alone would merge the whole street. High-confidence matches are linked
-automatically and drop out of the queue; anything below the bar is surfaced as a
-suggestion for a human.
+## Same-day work planning
 
-### Location resolution
+Mobilising a crew costs the same whether they do one job or four. When a request
+is opened, the planner proposes what else is worth clearing on the same trip.
 
-1. **EXIF GPS** from the photo — the phone was actually there
-2. **Google Geocoding API** — house-number accuracy, and it reports its own
-   precision. A locality-centroid (`APPROXIMATE`) result is *discarded*: every
-   unrecognised address resolves to the same downtown point, which would stack
-   unrelated reports inside the 90 m duplicate radius and merge them into one tree
-3. **Local Halifax gazetteer** — offline, street-centroid accuracy
-4. **Nothing** — stored anyway, flagged for a manual pin, excluded from distance maths
+**"The five nearest" is the obvious answer and it is wrong** — it returns five
+cosmetic prunings on one block while a High-priority tree sits 400 m away. Three
+things are weighed together: severity (final score), time on site, and travel
+time. Candidates are ranked by severity earned per hour of shift consumed, then
+discounted by a proximity factor so a crew does not leave the area for a
+marginally better job.
 
-## Swapping the classifier
+Because a Critical removal is genuinely 5–6 h of an 8 h shift, often only one
+extra job actually *fits*. So the plan reports two groups: **scheduled today**,
+and a **follow-up trip** for the rest of the shortlist.
 
-All text understanding is behind one function: `classifyComplaint()` in
-`src/engine/scoring.ts`. Replace it with a model call returning the same
-`Classification` shape and the weighting, thresholds, reasoning, UI and poster
-keep working unchanged.
+The recommendations are deliberately *not* the next entries in the queue.
 
-## Printing
+---
 
-"Print Poster" calls `window.print()`. Everything except the poster sits inside
-`.no-print`, which is `display: none` in print, so only the one-page assessment
-sheet reaches the printer. `@page` is US Letter portrait with 0.5in margins; the
-poster measures 7.5in wide and fits inside the 10in printable height.
+## Architecture
 
-## Seed data
+Three layers, enforced by one rule: **`frontend/` never imports from
+`backend/`**. Anything both sides need lives in `shared/`.
 
-The demo dataset is engineered, not random. `npm run db:reset` prints a
-verification report showing the ranked queue and the real distances between
-requests. It deliberately contains:
+```
+src/
+  backend/                  server-only
+    config.ts               environment reading; every value optional
+    db/client.ts            Supabase REST (PostgREST) client
+    db/repository.ts        every query; snake_case in, camelCase out
+    domain/scoring.ts       hazard rules, classification, fusion, escalation
+    domain/bundling.ts      same-day work planner
+    domain/duplicates.ts    same-tree detection
+    services/               intake, vision, geocode, exif, auth, storage, maps
+    seed/                   demo dataset + seeder
+  shared/                   pure, safe in both bundles
+    types.ts                domain types and server -> client prop shapes
+    scoring-config.ts       weights and priority bands — the displayed contract
+    geo.ts                  distance maths
+  frontend/
+    components/
+    styles/
+  app/                      Next.js routing only; pages compose, not compute
+```
 
-- Five geographic clusters plus one isolated outlier
-- The **#1 ranked request inside a tight cluster**, with five same-day
-  candidates within 500 m — and those candidates are *not* the next five in
-  priority order
-- The **#2 ranked request 1.5 km away**, so it visibly cannot be bundled with #1
-- A pre-linked duplicate pair, and an unlinked near-duplicate pair
-- Completed and rejected records, one with resident feedback
+`WEIGHTS` and the plan types live in `shared` because the UI prints them — one
+definition means the number the engine multiplies by is provably the number the
+arborist reads on the sheet.
 
-All seeded emails are `@example.com`. Nothing in the dataset can reach a real
-inbox.
+### Classification is stored; scoring is not
+
+```
+classifyComplaint(text) -> Classification   expensive, runs once, PERSISTED
+scoreRequest(cls, ctx)  -> Assessment       cheap, recomputed EVERY READ
+```
+
+Wait time changes daily, so a final score written to the database would be wrong
+by the next morning. Only findings derived from the report itself are stored;
+the weighting, escalation and priority are always live. Queue ordering happens
+in JS for the same reason.
+
+### Swapping the classifier
+
+All text understanding sits behind `classifyComplaint()`, and all image
+understanding behind `analyzeImage()`. Replace either with a different model
+returning the same shape and the weighting, thresholds, reasoning, UI and
+printed sheet keep working untouched.
+
+---
+
+## Other behaviour worth knowing
+
+**Duplicate detection.** When a large tree comes down, a dozen neighbours report
+it — which would otherwise fill the top of the queue with one tree and make the
+planner recommend the same job five times. Three gated signals (proximity,
+recency, description overlap) are required, because a street-centroid geocode
+puts every address on a street at the same point and proximity alone would merge
+the whole block.
+
+**Location resolution**, in order: EXIF GPS from the photo (the phone was at the
+tree) → Google Geocoding → a built-in Halifax street gazetteer → nothing, in
+which case the request is stored anyway, flagged for a manual pin, and excluded
+from distance maths.
+
+**Printing.** The detail page carries a one-page US Letter field assessment
+sheet. Everything else sits inside `.no-print`, so only the sheet reaches the
+printer.
+
+---
+
+## Scripts
+
+| Command | Does |
+|---|---|
+| `npm run dev` | Development server on :5177 |
+| `npm run build` | Production build |
+| `npm run db:check` | Verify the Supabase connection and tables |
+| `npm run db:seed` | Load the demo dataset |
+| `npm run db:reset` | Wipe and re-seed |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Scoring engine tests |
+
+---
+
+## Demo data
+
+The seeded dataset is engineered, not random, and `db:seed` prints a
+verification report. It deliberately contains five geographic clusters plus one
+isolated outlier; the **#1 ranked request inside a tight cluster** with several
+same-day candidates that are *not* the next entries in the queue; the **#2
+ranked request 1.5 km away** so it visibly cannot be bundled; a linked duplicate
+pair and an unlinked one; and completed records, one with resident feedback.
+
+All seeded emails are `@example.com`.
+
+---
+
+## Known gaps
+
+- **Row Level Security is not configured.** The Supabase publishable key
+  currently allows anonymous read and write of every table. Enable RLS before
+  any real resident data goes in.
+- Completion does not yet email the resident, and there is no feedback capture
+  page — the table and the hook point exist.
+- Suggested duplicates are computed at intake but there is no admin UI to
+  confirm or reject them, and no unlink for a wrong auto-link.
+- Uploaded photos are written to local disk, so the app will not run as-is on
+  serverless hosting without moving them to object storage.
+- Crew durations are estimated from severity rather than measured.
+
+---
+
+## Stack
+
+Next.js 14 (App Router) · TypeScript · Tailwind CSS · Supabase (PostgreSQL via
+PostgREST) · Claude vision · Lucide icons
